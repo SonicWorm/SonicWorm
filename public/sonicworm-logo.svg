@@ -1,0 +1,39 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="logoGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#00ffcc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00ddaa;stop-opacity:1" />
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge> 
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Outer Ring -->
+  <circle cx="100" cy="100" r="90" fill="none" stroke="url(#logoGradient)" stroke-width="4" opacity="0.8"/>
+  
+  <!-- Middle Ring -->
+  <circle cx="100" cy="100" r="75" fill="none" stroke="url(#logoGradient)" stroke-width="3" opacity="0.6"/>
+  
+  <!-- Inner Circle Background -->
+  <circle cx="100" cy="100" r="60" fill="#0a1a1a" stroke="url(#logoGradient)" stroke-width="2"/>
+  
+  <!-- Worm Body -->
+  <g filter="url(#glow)">
+    <!-- Head -->
+    <circle cx="85" cy="75" r="12" fill="url(#logoGradient)"/>
+    <!-- Eye -->
+    <circle cx="88" cy="72" r="3" fill="#0a1a1a"/>
+    
+    <!-- Body Segments -->
+    <circle cx="95" cy="85" r="10" fill="url(#logoGradient)" opacity="0.9"/>
+    <circle cx="105" cy="95" r="9" fill="url(#logoGradient)" opacity="0.8"/>
+    <circle cx="115" cy="105" r="8" fill="url(#logoGradient)" opacity="0.7"/>
+    <circle cx="125" cy="115" r="7" fill="url(#logoGradient)" opacity="0.6"/>
+    <circle cx="130" cy="125" r="6" fill="url(#logoGradient)" opacity="0.5"/>
+  </g>
+</svg>
