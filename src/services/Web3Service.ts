@@ -73,9 +73,7 @@ export interface GameTransaction {
 }
 
 // Type declarations for Vite env and window.ethereum
-interface ImportMeta {
-  env: Record<string, string>;
-}
+// ImportMeta interface removed as it's built-in to modern TypeScript
 declare global {
   interface Window {
     ethereum?: any;

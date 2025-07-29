@@ -13,7 +13,6 @@ export class GameScene extends Phaser.Scene {
   private player!: PlayerData;
   private otherPlayers: Map<string, PlayerData> = new Map();
   private food: FoodItem[] = [];
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private playerGraphics!: Phaser.GameObjects.Graphics;
   private foodGraphics!: Phaser.GameObjects.Graphics;
   private camera!: Phaser.Cameras.Scene2D.Camera;
@@ -23,22 +22,18 @@ export class GameScene extends Phaser.Scene {
   private readonly PLAYER_SPEED = 3;
   private readonly BOOST_SPEED = 6;
   private readonly SEGMENT_SIZE = 8;
-  private readonly FOOD_COUNT = 375; // Updated to 375
   private readonly MIN_SEGMENTS = 5;
 
   // GAME RULES: Server authority - client constants removed
   // Game rules now controlled by server prize pool system
 
   // Input state
-  private mousePointer!: Phaser.Input.Pointer;
   private isBoostActive = false;
 
   // Game timing - SENİN KURALLARIN
   private serverGameStartTime: number = 0; // Server'dan gelecek
-  private gameTimer: Phaser.Time.TimerEvent | null = null;
   
   // SENİN İSTEĞİN: Yem sayacı (Slither.io tarzı büyüme için)
-  private foodEatenCount: number = 0;
   
   // Bot sistemi kaldırıldı - Sadece multiplayer
 
@@ -279,7 +274,6 @@ export class GameScene extends Phaser.Scene {
     // Game start time server'dan gelecek
     
     // SENİN İSTEĞİN: Yem sayacını sıfırla
-    this.foodEatenCount = 0;
     
     console.log(`🎯 Player spawned at (${spawnX}, ${spawnY}) - Invulnerable for 10 seconds`);
   }
@@ -307,8 +301,6 @@ export class GameScene extends Phaser.Scene {
   // Server broadcasts food state via GAME_STATE updates
 
   private setupInput() {
-    this.cursors = this.input.keyboard!.createCursorKeys();
-    this.mousePointer = this.input.activePointer;
 
     // SENİN TERCİHLERİN: Cross-platform input sistemi
 
@@ -395,7 +387,9 @@ export class GameScene extends Phaser.Scene {
     // SENİN TERCİHLERİN: Landscape mode zorla
     if (screen && screen.orientation) {
       try {
-        screen.orientation.lock('landscape');
+        if (screen.orientation && 'lock' in screen.orientation) {
+          (screen.orientation as any).lock('landscape');
+        }
       } catch (e) {
         console.log('Screen orientation lock not supported');
       }
@@ -558,49 +552,12 @@ export class GameScene extends Phaser.Scene {
   // Server broadcasts food changes and player growth via GAME_STATE_UPDATE
 
   // SENİN İSTEĞİN: Daha güzel yem renkleri
-  private getRandomFoodColor(): number {
-    const foodColors = [
-      0x00ffcc, // Cyan
-      0xff6b6b, // Coral Red
-      0x4ecdc4, // Teal
-      0x45b7d1, // Sky Blue
-      0x96ceb4, // Mint Green
-      0xfeca57, // Sunny Yellow
-      0xff9ff3, // Pink
-      0x54a0ff, // Blue
-      0x5f27cd, // Purple
-      0x00d2d3, // Cyan
-      0xff9f43, // Orange
-      0x10ac84, // Green
-      0xee5a24, // Red Orange
-      0x0abde3, // Light Blue
-      0xc44569  // Dark Pink
-    ];
-    return Phaser.Utils.Array.GetRandom(foodColors);
-  }
 
   // SERVER AUTHORITY: Collision detection server'da yapılıyor
   // Client sadece server'dan gelen death event'ini işler
 
 
   // SENİN KURALLARIN: Ölüm efekti
-  private createDeathEffect() {
-    // Yılanı parçalara ayır ve yem haline getir
-    this.player.segments.forEach((segment, index) => {
-      // Her segment için yem oluştur
-      for (let i = 0; i < 3; i++) {
-        this.food.push({
-          x: segment.x + Phaser.Math.Between(-20, 20),
-          y: segment.y + Phaser.Math.Between(-20, 20),
-          color: this.player.color,
-          size: Phaser.Math.Between(4, 8)
-        });
-      }
-    });
-
-    // Parçacık efekti (basit)
-    console.log('💥 Death effect created');
-  }
 
 
   private checkBoundaries() {
@@ -742,11 +699,6 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private getMaxSegments(): number {
-    // SENİN İSTEĞİN: Slither.io tarzı - Sabit segment sayısı
-    // Sadece yem yediğinde büyür, otomatik büyüme YOK
-    return 50; // Maksimum 50 segment (Slither.io tarzı)
-  }
 
   // REMOVED: updateGameTimer() - Timer is now managed by server
   // Server broadcasts timer updates via TIMER_UPDATE events

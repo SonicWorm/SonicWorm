@@ -51,7 +51,7 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({ currentPlayer }) => {
     loadLeaderboard();
   }, [timeFilter]);
 
-  const calculatePoints = (kills: number, survivalTime: number): number => {
+  const calculatePoints = (kills: number, _survivalTime: number): number => {
     // NEW SYSTEM: Prize pool based scoring
     // Points = kills (more kills = higher rank)
     return kills;

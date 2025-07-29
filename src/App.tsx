@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { GameComponent } from './components/GameComponent';
 import { SplashScreen } from './components/SplashScreen';
 import { Leaderboard } from './components/Leaderboard';
 import MainMenu from './components/MainMenu';
-import { web3Service, PlayerStats, GameTransaction } from './services/Web3Service';
+import { web3Service, PlayerStats } from './services/Web3Service';
 import { multiplayerService } from './services/MultiplayerService';
 import './App.css';
 
@@ -27,20 +27,11 @@ const getRankIcon = (rank: number): string => {
     default: return `#${rank}`;
   }
 };
-const formatTimeAgo = (timestamp: number): string => {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  return 'Just now';
-};
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<'menu' | 'game' | 'leaderboard'>('menu');
-  const [gameMode, setGameMode] = useState<'demo' | 'blockchain'>('demo');
+  const [gameMode] = useState<'demo' | 'blockchain'>('demo');
   const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [gameStats, setGameStats] = useState<GameStats>({
@@ -53,12 +44,9 @@ function App() {
     totalSurvivalTime: 0,
     totalEarned: 0 // yeni sayaç
   });
-  const [currentGameKills, setCurrentGameKills] = useState(0);
-  const [currentGameTime, setCurrentGameTime] = useState(0);
   const [isGameActive, setIsGameActive] = useState(false);
   const [pendingRewards, setPendingRewards] = useState(0);
   const [lifePrice, setLifePrice] = useState(0.01);
-  const [transactions, setTransactions] = useState<GameTransaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [balance, setBalance] = useState("0");
   const [leaderboardData, setLeaderboardData] = useState<(PlayerStats & { walletAddress: string })[]>([]);
@@ -114,16 +102,6 @@ function App() {
     web3Service.setOnTransactionUpdate((tx) => {
       console.log(`🔄 Transaction update: ${tx.type} - ${tx.status} - ${tx.hash}`);
       
-      setTransactions(prev => {
-        const index = prev.findIndex(t => t.hash === tx.hash);
-        if (index >= 0) {
-          const updated = [...prev];
-          updated[index] = tx;
-          return updated;
-        } else {
-          return [...prev, tx];
-        }
-      });
 
       // --- EN ÖNEMLİ KISIM ---
       // Eğer işlem başarılı bir şekilde onaylandıysa,
@@ -471,19 +449,6 @@ function App() {
     }
   };
 
-  // Demo modunda gamesPlayed artmasın
-  const handleDemoStart = () => {
-    setGameMode('demo');
-    setGameStats(prev => ({
-      ...prev,
-      currentLives: prev.currentLives > 0 ? prev.currentLives - 1 : 0
-      // gamesPlayed burada artmıyor
-    }));
-    setCurrentGameKills(0);
-    setCurrentGameTime(0);
-    setIsGameActive(true);
-    setCurrentScreen('game');
-  };
 
   const handleDemoGameEnd = (kills: number, survivalTime: number) => {
     setIsGameActive(false);
@@ -497,12 +462,12 @@ function App() {
     console.log(`🎮 Demo Game ended - Kills: ${kills}, Survival: ${survivalTime}ms`);
   };
 
-  const handleKillUpdate = (kills: number) => {
-    setCurrentGameKills(kills);
+  const handleKillUpdate = (_kills: number) => {
+    // Kill tracking handled by game logic
   };
 
-  const handleTimeUpdate = (time: number) => {
-    setCurrentGameTime(time);
+  const handleTimeUpdate = (_time: number) => {
+    // Time tracking handled by game logic
   };
 
   // ESKİ SİSTEM KALDIRILDI - Ödüller server'dan prize pool sisteminden geliyor
@@ -873,11 +838,11 @@ function App() {
                         <div className="font-bold text-white">{entry.totalKills}</div>
                         <div className="text-xs text-gray-400">Best Kills</div>
                       </div>
-                  </div>
+                    </div>
                   </div>
                 ))
               )}
-                </div>
+            </div>
             {/* Footer */}
             <div className="mt-6 pt-4 border-t border-gray-700 text-center">
               <p className="text-xs text-gray-500">
@@ -897,9 +862,6 @@ function App() {
         onKillUpdate={handleKillUpdate}
         onTimeUpdate={handleTimeUpdate}
         onBackToMenu={() => setCurrentScreen('menu')}
-        currentLives={gameStats.currentLives}
-        isWalletConnected={isWalletConnected}
-        onEarningsUpdate={(earnings) => setGameStats(prev => ({ ...prev, totalEarned: earnings }))}
       />
     );
   }

@@ -7,19 +7,13 @@ interface GameComponentProps {
   onKillUpdate?: (kills: number) => void;
   onTimeUpdate?: (time: number) => void;
   onBackToMenu?: () => void;
-  onEarningsUpdate?: (earnings: number) => void;
-  currentLives?: number;
-  isWalletConnected?: boolean;
 }
 
 export const GameComponent: React.FC<GameComponentProps> = ({
   onGameEnd,
   onKillUpdate,
   onTimeUpdate,
-  onBackToMenu,
-  onEarningsUpdate,
-  currentLives,
-  isWalletConnected
+  onBackToMenu
 }) => {
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const [isGameLoaded, setIsGameLoaded] = useState(false);
@@ -52,7 +46,7 @@ export const GameComponent: React.FC<GameComponentProps> = ({
   useEffect(() => {
     // NEW: Server game end event listener
     const handleGameEnd = (event: CustomEvent) => {
-      const { finalLeaderboard, players, prizePool, gameState, prizeDistribution, survivors } = event.detail;
+      const { finalLeaderboard, players, gameState, prizeDistribution, survivors } = event.detail;
       
       // Get my stats from server data
       const myWalletAddress = localStorage.getItem('walletAddress');
