@@ -49,7 +49,7 @@ export class MultiplayerService {
   private onLobbyStatus: ((status: { players: number; maxPlayers: number; timeRemaining: number }) => void) | null = null;
   private onGameStarted: (() => void) | null = null;
 
-  constructor(private serverUrl: string = 'ws://localhost:8081') {}
+  constructor(private serverUrl: string = 'wss://sonicworm-server-production.up.railway.app') {}
 
   // Event listeners
   public setOnGameJoined(callback: (playerId: string, roomId: string, gameState: GameState) => void) {
