@@ -134,7 +134,7 @@ export const GameComponent: React.FC<GameComponentProps> = ({
       if (players && Array.isArray(players)) {
         // Tüm oyuncuları al (sadece hayatta olanları değil)
         const sortedPlayers = players
-          .filter((player: any) => player.kills > 0) // Kill'i olan herkesi göster
+          .filter((player: any) => player.kills >= 0) // Tüm oyuncuları göster (kill >= 0)
           .sort((a: any, b: any) => b.kills - a.kills)
           .slice(0, 3)
           .map((player: any, index: number) => ({
