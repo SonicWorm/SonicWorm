@@ -263,6 +263,13 @@ export class MultiplayerService {
         this.onLobbyStatus?.({ players: 0, maxPlayers: 0, timeRemaining: 0 });
         break;
 
+      case 'MATCH_FAILED':
+        console.log('❌ Match failed:', data.message);
+        this.onError?.(data.message); // Kullanıcıya bilgi ver
+        // Lobby state'ini sıfırla - kullanıcı yeniden join etmeli
+        this.onLobbyStatus?.({ players: 0, maxPlayers: 0, timeRemaining: 0 });
+        break;
+
       default:
         console.warn('Unknown message type:', data.type);
     }
