@@ -71,18 +71,18 @@ root.render(
   </React.StrictMode>
 );
 
-// Service worker registration (for PWA features)
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
-        console.log('SW registered: ', registration);
-      })
-      .catch((registrationError) => {
-        console.log('SW registration failed: ', registrationError);
-      });
-  });
-}
+// Service worker disabled - was causing MIME type errors without sw.js file
+// if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+//   window.addEventListener('load', () => {
+//     navigator.serviceWorker.register('/sw.js')
+//       .then((registration) => {
+//         console.log('SW registered: ', registration);
+//       })
+//       .catch((registrationError) => {
+//         console.log('SW registration failed: ', registrationError);
+//       });
+//   });
+// }
 
 // Performance monitoring
 if (process.env.NODE_ENV === 'development') {
