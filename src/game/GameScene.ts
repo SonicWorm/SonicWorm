@@ -126,7 +126,7 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    multiplayerService.setOnPlayerJoined((playerId, playerData) => {
+    multiplayerService.setOnPlayerJoined((playerId: string, playerData: any) => {
       if (playerId !== this.player.id) {
         this.otherPlayers.set(playerId, { id: playerId, ...playerData });
         console.log(`👋 Player joined: ${playerId}`, playerData);
@@ -138,7 +138,7 @@ export class GameScene extends Phaser.Scene {
       console.log(`👋 Player left: ${playerId}`);
     });
 
-    multiplayerService.setOnFoodCreated((food, fromPlayerId) => {
+    multiplayerService.setOnFoodCreated((food: any[], fromPlayerId: string) => {
       console.log(`🍎 Received ${food.length} food items from dead player ${fromPlayerId}`);
       // Food server'dan geldi, local food array'ine gerek yok (server authoritative)
       // Game state update ile zaten gelecek
@@ -801,13 +801,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   // Add cleanup method to prevent memory leaks
-  destroy(removeFromDisplayList?: boolean, removeFromUpdateList?: boolean) {
+  shutdown() {
     console.log('🧹 GameScene being destroyed - cleaning up multiplayer');
     
     // Don't disconnect from multiplayer service here as it might be shared
     // Just clean up local references
     this.otherPlayers.clear();
-    
-    super.destroy(removeFromDisplayList, removeFromUpdateList);
   }
 }
