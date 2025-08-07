@@ -440,7 +440,16 @@ class GameRoom {
   // SERVER AUTHORITY: Collision Detection Engine
   checkCollisions() {
     const players = Array.from(this.players.values()).filter(p => p.isAlive);
-    const SEGMENT_SIZE = 8; // Client ile aynı değer
+    const SEGMENT_SIZE = 16; // Daha büyük collision area
+    
+    // 🔍 DEBUG: Collision check info
+    if (players.length >= 2) {
+      console.log(`🔍 COLLISION CHECK: ${players.length} alive players`);
+      players.forEach(p => {
+        console.log(`  Player ${p.id}: segments=${p.segments?.length || 0}, head=${p.segments?.[0] ? 
+          `(${Math.round(p.segments[0].x)},${Math.round(p.segments[0].y)})` : 'no head'}`);
+      });
+    }
     
     for (let i = 0; i < players.length; i++) {
       const player = players[i];
@@ -467,30 +476,18 @@ class GameRoom {
           
           // Çarpışma tespit edildi
           if (distance < SEGMENT_SIZE) {
-            console.log(`🚨 SERVER COLLISION: ${player.id} hit ${otherPlayer.id}`);
+            console.log(`🚨 SERVER COLLISION: ${player.id} hit ${otherPlayer.id} at distance ${Math.round(distance)}`);
             
-            // Oyuncuyu öldür
-            player.isAlive = false;
-            
-            // Kill sayısını artır
+            // Kill sayısını artır (killPlayer çağrılmadan önce)
             otherPlayer.kills = (otherPlayer.kills || 0) + 1;
             
-            // Client'lara ölüm bildirimi gönder
-            this.broadcast({
-              type: 'PLAYER_KILLED',
-              killerId: otherPlayer.id,
-              victimId: player.id,
-              killerKills: otherPlayer.kills,
-              gameState: this.getGameState(),
-              players: Array.from(this.players.values()),
-              connectedCount: this.players.size,
-              prizePool: this.calculatePrizePool()
-            });
+            // 🎯 killPlayer fonksiyonunu çağır - Bu yem yaratma, broadcast vs. yapacak
+            const killed = this.killPlayer(player.id, otherPlayer.id);
             
-            // Blockchain'e kill kaydı (async)
-            this.recordKillToBlockchain(otherPlayer, player);
-            
-            return; // Bu oyuncu öldü, diğer çarpışmaları kontrol etme
+            if (killed) {
+              console.log(`💀 Player ${player.id} killed by ${otherPlayer.id} (kills: ${otherPlayer.kills})`);
+              return; // Bu oyuncu öldü, diğer çarpışmaları kontrol etme
+            }
           }
         }
       }
@@ -624,9 +621,9 @@ class GameRoom {
   }
 }
 
-// WebSocket Server - same port as HTTP
+// WebSocket Server
 const wss = new WebSocket.Server({ 
-  server: server,
+  server: server, // Railway için aynı port'ta çalış
   verifyClient: (info) => {
     // Rate limiting check
     return true; // Basit implementasyon
@@ -987,6 +984,7 @@ app.get('/stats', (req, res) => {
 
 const server = app.listen(PORT, () => {
   console.log(`🚀 Sonic Snake Server running on port ${PORT}`);
+  console.log(`🎮 WebSocket server running on port ${PORT + 1}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`📈 Stats: http://localhost:${PORT}/stats`);
 });
