@@ -108,6 +108,8 @@ export class GameScene extends Phaser.Scene {
 
   // SENİN KURALLARIN: Multiplayer setup
   private setupMultiplayer() {
+    console.log('🔌 Setting up multiplayer for GameScene');
+    
     // Multiplayer event listeners
     multiplayerService.setOnGameJoined((playerId, roomId, gameState) => {
       console.log(`🎮 Joined game: ${roomId} as ${playerId}`);
@@ -124,16 +126,22 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    multiplayerService.setOnPlayerJoined((player) => {
-      if (player.id !== this.player.id) {
-        this.otherPlayers.set(player.id, player);
-        console.log(`👋 Player joined: ${player.id}`);
+    multiplayerService.setOnPlayerJoined((playerId, playerData) => {
+      if (playerId !== this.player.id) {
+        this.otherPlayers.set(playerId, { id: playerId, ...playerData });
+        console.log(`👋 Player joined: ${playerId}`, playerData);
       }
     });
 
     multiplayerService.setOnPlayerLeft((playerId) => {
       this.otherPlayers.delete(playerId);
       console.log(`👋 Player left: ${playerId}`);
+    });
+
+    multiplayerService.setOnFoodCreated((food, fromPlayerId) => {
+      console.log(`🍎 Received ${food.length} food items from dead player ${fromPlayerId}`);
+      // Food server'dan geldi, local food array'ine gerek yok (server authoritative)
+      // Game state update ile zaten gelecek
     });
 
     multiplayerService.setOnPlayerKilled((killerId, victimId, gameState) => {
@@ -164,8 +172,16 @@ export class GameScene extends Phaser.Scene {
 
   private async connectToMultiplayer() {
     try {
-      await multiplayerService.connect();
+      console.log('🔗 Connecting to multiplayer service...');
+      
+      // Only connect if not already connected
+      if (!multiplayerService.isConnected()) {
+        await multiplayerService.connect();
+      } else {
+        console.log('🔗 Already connected to multiplayer service');
+      }
 
+      console.log('🎮 Joining game with player data...');
       // Oyuna katıl
       multiplayerService.joinGame({
         x: this.player.x,
@@ -197,10 +213,7 @@ export class GameScene extends Phaser.Scene {
     gameState.players.forEach(player => {
       const isMyPlayer = (player as any).walletAddress === myWalletAddress;
       
-      if (!isMyPlayer) {
-        // Other players
-        this.otherPlayers.set(player.id, player);
-      } else {
+      if (isMyPlayer) {
         // My player - sync server data
         const oldKills = this.player.kills;
         
@@ -209,7 +222,11 @@ export class GameScene extends Phaser.Scene {
         this.player.kills = player.kills;
         this.player.isAlive = player.isAlive;
         (this.player as any).walletAddress = (player as any).walletAddress;
-        this.player.segments = player.segments; // Server'dan segment verisini al
+        
+        // ✅ SERVER AUTHORITY: Sync segments from server
+        if (player.segments && player.segments.length > 0) {
+          this.player.segments = player.segments;
+        }
         
         // Kill değişti mi kontrol et ve UI'ya bildir
         if (oldKills !== player.kills) {
@@ -218,7 +235,11 @@ export class GameScene extends Phaser.Scene {
           }));
         }
         
-        console.log(`🆔 Player synced: ID=${player.id}, Wallet=${myWalletAddress}, Kills=${player.kills}`);
+        console.log(`🆔 My player synced: ID=${player.id}, Wallet=${myWalletAddress}, Kills=${player.kills}`);
+      } else {
+        // ✅ OTHER PLAYERS: Add to otherPlayers map for rendering
+        this.otherPlayers.set(player.id, player);
+        console.log(`👥 Other player added: ID=${player.id}, Wallet=${(player as any).walletAddress}`);
       }
     });
 
@@ -384,8 +405,8 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // SENİN TERCİHLERİN: Landscape mode zorla
-    if (screen && screen.orientation) {
+    // SENİN TERCİHLERİN: Landscape mode zorla (only on mobile)
+    if (screen && screen.orientation && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
       try {
         if (screen.orientation && 'lock' in screen.orientation) {
           (screen.orientation as any).lock('landscape');
@@ -754,6 +775,15 @@ export class GameScene extends Phaser.Scene {
     this.player.isAlive = false;
     this.endGame();
     
+    // 🎯 YENİ: UI component'e haber ver (playerKilled event)
+    window.dispatchEvent(new CustomEvent('playerKilled', {
+      detail: {
+        message: 'You were killed! Returning to main menu...'
+      }
+    }));
+    
+    console.log('💀 Local player killed - dispatched playerKilled event');
+    
     // ✅ ÖLEN OYUNCU İÇİN BLOCKCHAIN RESET ÇAĞIR
     const walletAddress = localStorage.getItem('walletAddress');
     if (walletAddress) {
@@ -768,5 +798,16 @@ export class GameScene extends Phaser.Scene {
   public resetPlayer() {
     this.initializePlayer();
     // REMOVED: generateFood() - Food is now generated by server
+  }
+
+  // Add cleanup method to prevent memory leaks
+  destroy(removeFromDisplayList?: boolean, removeFromUpdateList?: boolean) {
+    console.log('🧹 GameScene being destroyed - cleaning up multiplayer');
+    
+    // Don't disconnect from multiplayer service here as it might be shared
+    // Just clean up local references
+    this.otherPlayers.clear();
+    
+    super.destroy(removeFromDisplayList, removeFromUpdateList);
   }
 }
