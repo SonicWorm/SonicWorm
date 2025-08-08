@@ -177,8 +177,8 @@ export class GameScene extends Phaser.Scene {
     try {
       await multiplayerService.connect();
 
-    // Oyuna katıl
-    multiplayerService.joinGame({
+      // Oyuna katıl
+      multiplayerService.joinGame({
         x: this.player.x,
         y: this.player.y,
         angle: this.player.angle,
@@ -228,7 +228,7 @@ export class GameScene extends Phaser.Scene {
           } else if (player.segments) {
             existingPlayer.segments = player.segments;
           }
-        } else {
+      } else {
           // New player - add to map
           const newPlayer = {
             ...player,
@@ -458,7 +458,7 @@ export class GameScene extends Phaser.Scene {
       try {
         if ('lock' in screen.orientation) {
           // @ts-ignore
-          screen.orientation.lock('landscape');
+        screen.orientation.lock('landscape');
         }
       } catch (e) {
         console.log('Screen orientation lock not supported');
@@ -562,9 +562,9 @@ export class GameScene extends Phaser.Scene {
           // 🎯 OPTIMIZED: Always send segmentCount, segments only when needed
           segmentCount: this.player.segments.length,
           ...(this.shouldSendSegments() && {
-            segments: this.player.segments.map(seg => ({
-              x: Math.round(seg.x),
-              y: Math.round(seg.y)
+          segments: this.player.segments.map(seg => ({
+            x: Math.round(seg.x),
+            y: Math.round(seg.y)
             }))
           }),
           kills: this.player.kills,
