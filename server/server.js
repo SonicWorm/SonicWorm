@@ -362,13 +362,10 @@ class GameRoom {
           // Generate new food
           this.generateFood(1);
           
-          // Broadcast updated game state with full data
+          // Broadcast minimal food delta
           this.broadcast({
-            type: 'GAME_STATE_UPDATE',
-            gameState: this.getGameState(),
-            players: Array.from(this.players.values()),
-            connectedCount: this.players.size,
-            prizePool: this.calculatePrizePool()
+            type: 'FOOD_CREATED',
+            newFood: [{ id: foodItem.id, x: foodItem.x, y: foodItem.y, color: foodItem.color, size: foodItem.size }]
           });
         }
       }
@@ -427,11 +424,7 @@ class GameRoom {
       this.broadcast({
         type: 'TIMER_UPDATE',
         timeRemaining: timeRemaining,
-        elapsedTime: elapsedTime,
-        gameState: this.getGameState(),
-        players: Array.from(this.players.values()),
-        connectedCount: this.players.size,
-        prizePool: this.calculatePrizePool()
+        elapsedTime: elapsedTime
       });
     }
   }
@@ -609,12 +602,28 @@ class GameRoom {
   }
 
   getGameState() {
+    // Sanitize player payload (avoid sending ws or large objects)
+    const sanitizedPlayers = Array.from(this.players.values()).map((p) => ({
+      id: p.id,
+      x: p.x,
+      y: p.y,
+      angle: p.angle,
+      // Send only segmentCount by default to reduce payload
+      segmentCount: Array.isArray(p.segments) ? p.segments.length : 0,
+      // Optionally include segments if already present in lightweight form
+      // segments: p.segments,
+      kills: p.kills || 0,
+      isAlive: !!p.isAlive,
+      color: p.color,
+      walletAddress: p.walletAddress || null
+    }));
+
     return {
-      players: Array.from(this.players.values()),
+      players: sanitizedPlayers,
       food: this.gameState.food,
       isActive: this.gameState.isActive,
       startTime: this.gameState.startTime,
-      timeRemaining: this.gameState.startTime ? 
+      timeRemaining: this.gameState.startTime ?
         Math.max(0, GAME_CONFIG.GAME_DURATION - (Date.now() - this.gameState.startTime)) : 0,
       prizePool: this.calculatePrizePool()
     };
@@ -788,9 +797,20 @@ wss.on('connection', (ws, req) => {
             }));
             
             // Diğer oyunculara yeni oyuncu bilgisini gönder
+            const p = currentRoom.players.get(playerId);
             broadcastToRoom(currentRoom.id, {
               type: 'PLAYER_JOINED',
-              player: currentRoom.players.get(playerId)
+              player: {
+                id: p.id,
+                x: p.x,
+                y: p.y,
+                angle: p.angle,
+                segmentCount: Array.isArray(p.segments) ? p.segments.length : 0,
+                kills: p.kills || 0,
+                isAlive: !!p.isAlive,
+                color: p.color,
+                walletAddress: p.walletAddress || null
+              }
             }, playerId);
           } else {
             ws.send(JSON.stringify({
@@ -825,11 +845,7 @@ wss.on('connection', (ws, req) => {
               broadcastToRoom(currentRoom.id, {
                 type: 'PLAYER_KILLED',
                 killerId: playerId,
-                victimId: data.victimId,
-                gameState: currentRoom.getGameState(),
-                players: Array.from(currentRoom.players.values()),
-                connectedCount: currentRoom.players.size,
-                prizePool: currentRoom.calculatePrizePool()
+                victimId: data.victimId
               });
             }
           }
@@ -920,7 +936,7 @@ function broadcastToRoom(roomId, message, excludePlayerId = null) {
   });
 }
 
-// Game state broadcast (60 FPS) + COLLISION DETECTION + FOOD SYSTEM + TIMER
+// Game state broadcast (15 Hz) + COLLISION DETECTION + FOOD SYSTEM + TIMER
 setInterval(() => {
   gameRooms.forEach((room) => {
     if (room.gameState.isActive && room.players.size > 0) {
@@ -929,24 +945,15 @@ setInterval(() => {
       room.checkFoodCollisions();    // Player vs Food collision  
       room.updateGameTimer();        // Game timer management
       
-      // Broadcast complete game state with real-time data
+      // Broadcast sanitized game state
       const gameState = room.getGameState();
       broadcastToRoom(room.id, {
         type: 'GAME_STATE',
         gameState: gameState
       });
-      
-      // Additional UI updates
-      broadcastToRoom(room.id, {
-        type: 'GAME_STATE_UPDATE',
-        prizePool: room.calculatePrizePool(),
-        players: gameState.players,
-        connectedCount: room.players.size,
-        timeRemaining: gameState.timeRemaining
-      });
     }
   });
-}, 1000 / 60); // 60 FPS
+}, 1000 / 15); // 15 Hz
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -984,7 +991,7 @@ app.get('/stats', (req, res) => {
 
 const server = app.listen(PORT, () => {
   console.log(`🚀 Sonic Snake Server running on port ${PORT}`);
-  console.log(`🎮 WebSocket server running on port ${PORT + 1}`);
+  console.log(`🎮 WebSocket server attached to HTTP server on same port`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`📈 Stats: http://localhost:${PORT}/stats`);
 });

@@ -20,6 +20,7 @@ export const GameComponent: React.FC<GameComponentProps> = ({
   const [currentKills, setCurrentKills] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [gameStatus, setGameStatus] = useState<'loading' | 'playing' | 'ended'>('loading');
+  const isInitializing = useRef(false);
   
   // REAL-TIME GAME DATA
   const [prizePool, setPrizePool] = useState(0);
@@ -31,17 +32,19 @@ export const GameComponent: React.FC<GameComponentProps> = ({
   const [gameEndData, setGameEndData] = useState<{isWinner: boolean, prizeWon: number} | null>(null);
 
   useEffect(() => {
-    if (gameContainerRef.current && !isGameLoaded) {
+    if (gameContainerRef.current && !isGameLoaded && !isInitializing.current) {
       initializeGame();
     }
 
     return () => {
       if (isGameLoaded) {
+        console.log('🧹 GameComponent cleanup: destroying game');
         gameManager.destroyGame();
         setIsGameLoaded(false);
+        isInitializing.current = false;
       }
     };
-  }, [isGameLoaded]);
+  }, []); // Remove isGameLoaded from dependency to prevent multiple initializations
 
   useEffect(() => {
     // NEW: Server game end event listener
@@ -97,27 +100,6 @@ export const GameComponent: React.FC<GameComponentProps> = ({
       onTimeUpdate?.(time);
     };
 
-    // PLAYER KILLED HANDLER - ölen oyuncu için blockchain reset
-    const handlePlayerKilled = async (event: CustomEvent) => {
-      const { message } = event.detail;
-      
-      if (message === 'You were killed! Returning to main menu...') {
-        console.log('💀 I was killed - performing blockchain reset');
-        
-        try {
-          const { web3Service } = await import('../services/Web3Service');
-          await web3Service.emergencyResetMyStatus();
-          console.log('✅ Dead player blockchain reset successful');
-        } catch (error) {
-          console.error('❌ Failed to reset dead player:', error);
-        }
-        
-        // Return to menu after reset
-        setTimeout(() => {
-          onBackToMenu?.();
-        }, 2000);
-      }
-    };
 
     // REAL-TIME DATA UPDATES
     const handleGameStateUpdate = (event: CustomEvent) => {
@@ -155,14 +137,12 @@ export const GameComponent: React.FC<GameComponentProps> = ({
     window.addEventListener('killUpdated', handleKillUpdate as EventListener);
     window.addEventListener('timeUpdated', handleTimeUpdate as EventListener);
     window.addEventListener('gameStateUpdated', handleGameStateUpdate as EventListener);
-    window.addEventListener('playerKilled', handlePlayerKilled as unknown as EventListener);
 
     return () => {
       window.removeEventListener('gameEnded', handleGameEnd as EventListener);
       window.removeEventListener('killUpdated', handleKillUpdate as EventListener);
       window.removeEventListener('timeUpdated', handleTimeUpdate as EventListener);
       window.removeEventListener('gameStateUpdated', handleGameStateUpdate as EventListener);
-      window.removeEventListener('playerKilled', handlePlayerKilled as unknown as EventListener);
     };
   }, [onGameEnd, onKillUpdate, onTimeUpdate]);
 
@@ -170,15 +150,26 @@ export const GameComponent: React.FC<GameComponentProps> = ({
 
   const initializeGame = async () => {
     try {
+      // Prevent multiple simultaneous initializations
+      if (isInitializing.current) {
+        console.log('🎮 Game already initializing, skipping...');
+        return;
+      }
+
+      isInitializing.current = true;
       setGameStatus('loading');
       console.log('🎮 Initializing SonicWorm game...');
+      
       await gameManager.startGame('game-container');
+      
       setIsGameLoaded(true);
       setGameStatus('playing');
       console.log('✅ SonicWorm game initialized successfully');
     } catch (error) {
       console.error('❌ Failed to initialize game:', error);
       setGameStatus('ended');
+    } finally {
+      isInitializing.current = false;
     }
   };
 
@@ -202,15 +193,37 @@ export const GameComponent: React.FC<GameComponentProps> = ({
             </h1>
           </div>
           
-          {onBackToMenu && gameStatus === 'ended' && (
+          <div className="flex gap-2">
+            {/* 🚨 ADMIN EMERGENCY BUTTON */}
             <button
-              onClick={onBackToMenu}
+              onClick={async () => {
+                try {
+                  console.log('🚨 ADMIN: Kurtarma işlemi başlatılıyor...');
+                  const { web3Service } = await import('../services/Web3Service');
+                  await web3Service.adminEmergencyResetAll();
+                  alert('✅ TÜM SIKIŞAN OYUNCULAR KURTARILDI!');
+                } catch (error: any) {
+                  console.error('❌ Kurtarma başarısız:', error);
+                  alert('❌ Kurtarma başarısız: ' + error.message);
+                }
+              }}
               className="px-4 py-2 rounded-lg font-bold text-white transition-all hover:scale-105"
-              style={{ background: 'linear-gradient(45deg, #6366f1, #8b5cf6)' }}
+              style={{ background: 'linear-gradient(45deg, #ff4444, #cc0000)' }}
+              title="Tüm sıkışan oyuncuları kurtar (ADMIN ONLY)"
             >
-              ← Back to Menu
+              🚨 KURTAR TÜM OYUNCULAR
             </button>
-          )}
+            
+            {onBackToMenu && gameStatus === 'ended' && (
+              <button
+                onClick={onBackToMenu}
+                className="px-4 py-2 rounded-lg font-bold text-white transition-all hover:scale-105"
+                style={{ background: 'linear-gradient(45deg, #6366f1, #8b5cf6)' }}
+              >
+                ← Back to Menu
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Game Container */}

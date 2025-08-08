@@ -5,6 +5,11 @@ export interface PlayerData {
   y: number;
   angle: number;
   segments: Array<{ x: number; y: number }>;
+  walletAddress?: string;
+  // Optional lightweight fields for optimized sync
+  segmentCount?: number;
+  targetX?: number;
+  targetY?: number;
   kills: number;
   isAlive: boolean;
   color: number;
@@ -49,7 +54,9 @@ export class MultiplayerService {
   private onLobbyStatus: ((status: { players: number; maxPlayers: number; timeRemaining: number }) => void) | null = null;
   private onGameStarted: (() => void) | null = null;
 
-  constructor(private serverUrl: string = 'wss://sonicworm-server-production.up.railway.app') {}
+  constructor(private serverUrl: string = 'wss://sonicworm-server-production.up.railway.app') {
+    console.log('🔧 MultiplayerService initialized with server:', this.serverUrl);
+  }
 
   // Event listeners
   public setOnGameJoined(callback: (playerId: string, roomId: string, gameState: GameState) => void) {
@@ -115,10 +122,11 @@ export class MultiplayerService {
   public connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        console.log('🔗 Attempting to connect to:', this.serverUrl);
         this.ws = new WebSocket(this.serverUrl);
 
         this.ws.onopen = () => {
-          console.log('🔗 Connected to multiplayer server');
+          console.log('✅ Connected to multiplayer server successfully');
           this.reconnectAttempts = 0;
           this.onConnectionChange?.(true);
           resolve();
@@ -142,7 +150,8 @@ export class MultiplayerService {
         };
 
         this.ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
+          console.error('🚨 WebSocket connection failed:', error);
+          console.error('🚨 Attempted server URL:', this.serverUrl);
           this.onError?.('Connection error');
           reject(error);
         };
@@ -165,44 +174,30 @@ export class MultiplayerService {
         this.onPlayerUpdate?.(data.playerId, data.playerData);
         break;
 
+      case 'PLAYER_JOINED':
+        console.log('📢 New player joined:', data.player);
+        this.onPlayerJoined?.(data.player);
+        break;
+
+      case 'PLAYER_LEFT':
+        console.log('📢 Player left:', data.playerId);
+        this.onPlayerLeft?.(data.playerId);
+        break;
+
       case 'PLAYER_KILLED':
         this.onPlayerKilled?.(data.killerId, data.victimId, data.gameState);
-        // Dispatch player killed event
-        window.dispatchEvent(new CustomEvent('playerKilled', {
-          detail: {
-            message: data.message
-          }
-        }));
-        // Dispatch updated game data
-        window.dispatchEvent(new CustomEvent('gameStateUpdated', {
-          detail: {
-            players: data.players,
-            connectedCount: data.connectedCount,
-            prizePool: data.prizePool,
-            gameState: data.gameState
-          }
-        }));
         break;
 
       case 'GAME_STATE':
+        // 🎯 Unified path: always pass to onGameState
         this.onGameState?.(data.gameState);
         break;
       case 'GAME_STATE_UPDATE':
+        // 🎯 OPTIMIZED: Handle as incremental update if needed
         this.onGameStateUpdate?.(data);
-        // Dispatch to components
-        window.dispatchEvent(new CustomEvent('gameStateUpdated', {
-          detail: data
-        }));
         break;
       case 'TIMER_UPDATE':
         this.onTimerUpdate?.(data);
-        // Dispatch timer update to components
-        window.dispatchEvent(new CustomEvent('timeUpdated', {
-          detail: { 
-            time: data.elapsedTime,
-            timeRemaining: data.timeRemaining 
-          }
-        }));
         break;
       
       case 'GAME_ENDED':
@@ -217,13 +212,6 @@ export class MultiplayerService {
         }));
         break;
 
-      case 'PLAYER_JOINED':
-        this.onPlayerJoined?.(data.player);
-        break;
-
-      case 'PLAYER_LEFT':
-        this.onPlayerLeft?.(data.playerId);
-        break;
 
       case 'ERROR':
         this.onError?.(data.message);
@@ -270,6 +258,13 @@ export class MultiplayerService {
         this.onLobbyStatus?.({ players: 0, maxPlayers: 0, timeRemaining: 0 });
         break;
 
+      case 'FOOD_CREATED':
+        // 🎯 OPTIMIZED: Handle new food creation without full state update
+        window.dispatchEvent(new CustomEvent('foodCreated', {
+          detail: { newFood: data.newFood }
+        }));
+        break;
+
       default:
         console.warn('Unknown message type:', data.type);
     }
@@ -312,35 +307,11 @@ export class MultiplayerService {
     });
   }
 
-  public async leaveLobby() {
+  public leaveLobby() {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected to server');
     }
 
-    // ✅ Client-side blockchain call: Cancel reserved game with player's own wallet
-    try {
-      const { web3Service } = await import('./Web3Service');
-      const currentGameId = web3Service.getCurrentGameId();
-      
-      if (currentGameId) {
-        console.log(`🔄 Canceling reserved game ${currentGameId} from client...`);
-        await web3Service.cancelReservedGame(currentGameId);
-        console.log(`✅ Reserved game ${currentGameId} canceled successfully`);
-      }
-    } catch (error: any) {
-      console.error('❌ Failed to cancel reserved game:', error.message);
-      // Fallback: Try emergency reset
-      try {
-        const { web3Service } = await import('./Web3Service');
-        console.log('🚨 Trying emergency reset as fallback...');
-        await web3Service.emergencyResetMyStatus();
-        console.log('✅ Emergency reset successful');
-      } catch (emergencyError: any) {
-        console.error('❌ Emergency reset also failed:', emergencyError.message);
-      }
-    }
-
-    // Send leave lobby message to server
     this.send({
       type: 'LEAVE_LOBBY'
     });

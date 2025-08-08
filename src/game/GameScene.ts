@@ -13,6 +13,7 @@ export class GameScene extends Phaser.Scene {
   private player!: PlayerData;
   private otherPlayers: Map<string, PlayerData> = new Map();
   private food: FoodItem[] = [];
+  // private cursors!: Phaser.Types.Input.Keyboard.CursorKeys; // kept for future use
   private playerGraphics!: Phaser.GameObjects.Graphics;
   private foodGraphics!: Phaser.GameObjects.Graphics;
   private camera!: Phaser.Cameras.Scene2D.Camera;
@@ -22,18 +23,23 @@ export class GameScene extends Phaser.Scene {
   private readonly PLAYER_SPEED = 3;
   private readonly BOOST_SPEED = 6;
   private readonly SEGMENT_SIZE = 8;
+  // private readonly FOOD_COUNT = 375; // not used on client anymore
   private readonly MIN_SEGMENTS = 5;
 
   // GAME RULES: Server authority - client constants removed
   // Game rules now controlled by server prize pool system
 
   // Input state
+  // private mousePointer!: Phaser.Input.Pointer;
   private isBoostActive = false;
 
   // Game timing - SENİN KURALLARIN
   private serverGameStartTime: number = 0; // Server'dan gelecek
+  // private gameTimer: Phaser.Time.TimerEvent | null = null;
   
   // SENİN İSTEĞİN: Yem sayacı (Slither.io tarzı büyüme için)
+  // private foodEatenCount: number = 0;
+  private currentGameId: number | null = null;
   
   // Bot sistemi kaldırıldı - Sadece multiplayer
 
@@ -126,22 +132,16 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    multiplayerService.setOnPlayerJoined((playerId: string, playerData: any) => {
-      if (playerId !== this.player.id) {
-        this.otherPlayers.set(playerId, { id: playerId, ...playerData });
-        console.log(`👋 Player joined: ${playerId}`, playerData);
+    multiplayerService.setOnPlayerJoined((player) => {
+      if (player.id !== this.player.id) {
+        this.otherPlayers.set(player.id, player);
+        console.log(`👋 Player joined: ${player.id}`);
       }
     });
 
     multiplayerService.setOnPlayerLeft((playerId) => {
       this.otherPlayers.delete(playerId);
       console.log(`👋 Player left: ${playerId}`);
-    });
-
-    multiplayerService.setOnFoodCreated((food: any[], fromPlayerId: string) => {
-      console.log(`🍎 Received ${food.length} food items from dead player ${fromPlayerId}`);
-      // Food server'dan geldi, local food array'ine gerek yok (server authoritative)
-      // Game state update ile zaten gelecek
     });
 
     multiplayerService.setOnPlayerKilled((killerId, victimId, gameState) => {
@@ -166,24 +166,19 @@ export class GameScene extends Phaser.Scene {
       console.error('Multiplayer error:', error);
     });
 
+    // 🎯 OPTIMIZED: Listen for food creation events
+    window.addEventListener('foodCreated', this.handleFoodCreated as unknown as EventListener);
+
     // Multiplayer bağlantısını başlat
     this.connectToMultiplayer();
   }
 
   private async connectToMultiplayer() {
     try {
-      console.log('🔗 Connecting to multiplayer service...');
-      
-      // Only connect if not already connected
-      if (!multiplayerService.isConnected()) {
-        await multiplayerService.connect();
-      } else {
-        console.log('🔗 Already connected to multiplayer service');
-      }
+      await multiplayerService.connect();
 
-      console.log('🎮 Joining game with player data...');
-      // Oyuna katıl
-      multiplayerService.joinGame({
+    // Oyuna katıl
+    multiplayerService.joinGame({
         x: this.player.x,
         y: this.player.y,
         angle: this.player.angle,
@@ -191,7 +186,7 @@ export class GameScene extends Phaser.Scene {
         kills: this.player.kills,
         isAlive: this.player.isAlive,
         color: this.player.color
-      }, web3Service.getCurrentAccount() || undefined, web3Service.getCurrentGameId() || undefined);
+    }, web3Service.getCurrentAccount() || undefined, web3Service.getCurrentGameId() || undefined);
 
     } catch (error) {
       console.error('Failed to connect to multiplayer:', error);
@@ -199,6 +194,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // 🎯 EXACT LOCAL SYSTEM: Copy from working local GameScene.ts
   private updateGameStateFromServer(gameState: GameState) {
     // Server'dan game timing bilgisi al
     if (gameState.startTime && !this.serverGameStartTime) {
@@ -206,14 +202,44 @@ export class GameScene extends Phaser.Scene {
       console.log('🕐 Game start time set from server:', this.serverGameStartTime);
     }
     
-    // WALLET ADDRESS MAPPING: Find players by wallet address
+    // 🎯 OPTIMIZED: DIFF-based player updates instead of clear() + rebuild
     const myWalletAddress = localStorage.getItem('walletAddress');
-    this.otherPlayers.clear();
+    const serverPlayerIds = new Set();
     
     gameState.players.forEach(player => {
       const isMyPlayer = (player as any).walletAddress === myWalletAddress;
       
-      if (isMyPlayer) {
+      if (!isMyPlayer) {
+        serverPlayerIds.add(player.id); // Track server player IDs
+        
+        // 🎯 OPTIMIZED: Update or add players without clearing
+        const existingPlayer = this.otherPlayers.get(player.id);
+        if (existingPlayer) {
+          // Update existing player with interpolation targets
+          (existingPlayer as any).targetX = player.x;
+          (existingPlayer as any).targetY = player.y;
+          existingPlayer.angle = player.angle;
+          existingPlayer.kills = player.kills;
+          existingPlayer.isAlive = player.isAlive;
+          // Generate segments from segmentCount if not provided
+          if (player.segmentCount && !player.segments) {
+            existingPlayer.segmentCount = player.segmentCount;
+            this.generateSegmentsFromCount(existingPlayer);
+          } else if (player.segments) {
+            existingPlayer.segments = player.segments;
+          }
+        } else {
+          // New player - add to map
+          const newPlayer = {
+            ...player,
+            targetX: player.x,
+            targetY: player.y,
+            // Generate segments if only count provided
+            segments: player.segments || this.generateSegmentsFromCount({ x: player.x, y: player.y, segmentCount: player.segmentCount || 5 })
+          };
+          this.otherPlayers.set(player.id, newPlayer);
+        }
+      } else {
         // My player - sync server data
         const oldKills = this.player.kills;
         
@@ -223,11 +249,6 @@ export class GameScene extends Phaser.Scene {
         this.player.isAlive = player.isAlive;
         (this.player as any).walletAddress = (player as any).walletAddress;
         
-        // ✅ SERVER AUTHORITY: Sync segments from server
-        if (player.segments && player.segments.length > 0) {
-          this.player.segments = player.segments;
-        }
-        
         // Kill değişti mi kontrol et ve UI'ya bildir
         if (oldKills !== player.kills) {
           window.dispatchEvent(new CustomEvent('killUpdated', {
@@ -235,21 +256,46 @@ export class GameScene extends Phaser.Scene {
           }));
         }
         
-        console.log(`🆔 My player synced: ID=${player.id}, Wallet=${myWalletAddress}, Kills=${player.kills}`);
-      } else {
-        // ✅ OTHER PLAYERS: Add to otherPlayers map for rendering
-        this.otherPlayers.set(player.id, player);
-        console.log(`👥 Other player added: ID=${player.id}, Wallet=${(player as any).walletAddress}`);
+        console.log(`🆔 Player synced: ID=${player.id}, Wallet=${myWalletAddress}, Kills=${player.kills}`);
       }
     });
 
+    // 🎯 OPTIMIZED: Remove players that are no longer on server (diff cleanup)
+    for (const [playerId] of this.otherPlayers) {
+      if (!serverPlayerIds.has(playerId)) {
+        this.otherPlayers.delete(playerId);
+        console.log(`👋 Removed disconnected player: ${playerId}`);
+      }
+    }
+
     // Yem durumunu güncelle
-    this.food = gameState.food.map(f => ({
-      x: f.x,
-      y: f.y,
-      color: f.color,
-      size: f.size
-    }));
+    this.food = gameState.food?.map(f => ({ x: f.x, y: f.y, color: f.color, size: f.size })) || this.food;
+  }
+  
+  // 🎯 OPTIMIZED: Generate segments from count for other players
+  private generateSegmentsFromCount(player: any): any[] {
+    if (!player.segmentCount) return [];
+    
+    const segments = [];
+    for (let i = 0; i < player.segmentCount; i++) {
+      segments.push({
+        x: player.x - (i * this.SEGMENT_SIZE),
+        y: player.y
+      });
+    }
+    return segments;
+  }
+
+  // 🎯 OPTIMIZED: Interpolate other players for smooth movement
+  private interpolateOtherPlayers() {
+    this.otherPlayers.forEach(player => {
+      if (player.targetX !== undefined && player.targetY !== undefined) {
+        // Smooth interpolation over 100-150ms
+        const lerpFactor = 0.1; // Adjust for smoother/faster interpolation
+        player.x = player.x + (player.targetX - player.x) * lerpFactor;
+        player.y = player.y + (player.targetY - player.y) * lerpFactor;
+      }
+    });
   }
 
   // SERVER ID SYNC: Set player ID from server
@@ -295,6 +341,7 @@ export class GameScene extends Phaser.Scene {
     // Game start time server'dan gelecek
     
     // SENİN İSTEĞİN: Yem sayacını sıfırla
+    // this.foodEatenCount = 0;
     
     console.log(`🎯 Player spawned at (${spawnX}, ${spawnY}) - Invulnerable for 10 seconds`);
   }
@@ -322,6 +369,7 @@ export class GameScene extends Phaser.Scene {
   // Server broadcasts food state via GAME_STATE updates
 
   private setupInput() {
+    // Cursors not used; keep input via pointer events only
 
     // SENİN TERCİHLERİN: Cross-platform input sistemi
 
@@ -405,11 +453,12 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // SENİN TERCİHLERİN: Landscape mode zorla (only on mobile)
-    if (screen && screen.orientation && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+    // SENİN TERCİHLERİN: Landscape mode zorla
+    if (screen && screen.orientation) {
       try {
-        if (screen.orientation && 'lock' in screen.orientation) {
-          (screen.orientation as any).lock('landscape');
+        if ('lock' in screen.orientation) {
+          // @ts-ignore
+          screen.orientation.lock('landscape');
         }
       } catch (e) {
         console.log('Screen orientation lock not supported');
@@ -432,6 +481,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.player.isAlive) return;
 
     this.updatePlayer();
+    // 🎯 OPTIMIZED: Interpolate other players for smooth movement
+    this.interpolateOtherPlayers();
     // CLIENT-SIDE ONLY: Rendering and UI
     this.updateCamera();
     this.checkBoundaries();
@@ -499,19 +550,23 @@ export class GameScene extends Phaser.Scene {
     this.syncPlayerToServer();
   }
 
-  // SENİN KURALLARIN: Player durumunu server'a gönder
+  // 🎯 OPTIMIZED: Reduced frequency and payload
   private syncPlayerToServer() {
     if (multiplayerService.isConnected() && this.player.isAlive) {
-      // Throttle updates (20 FPS) - Daha sık güncelleme
-      if (!this.lastSyncTime || Date.now() - this.lastSyncTime > 50) {
+      // 🎯 OPTIMIZED: 150ms instead of 50ms (~6-7 Hz instead of 20 Hz)
+      if (!this.lastSyncTime || Date.now() - this.lastSyncTime > 150) {
         multiplayerService.updatePlayer({
-          x: Math.round(this.player.x), // Koordinatları yuvarla
+          x: Math.round(this.player.x),
           y: Math.round(this.player.y),
           angle: this.player.angle,
-          segments: this.player.segments.map(seg => ({
-            x: Math.round(seg.x),
-            y: Math.round(seg.y)
-          })),
+          // 🎯 OPTIMIZED: Always send segmentCount, segments only when needed
+          segmentCount: this.player.segments.length,
+          ...(this.shouldSendSegments() && {
+            segments: this.player.segments.map(seg => ({
+              x: Math.round(seg.x),
+              y: Math.round(seg.y)
+            }))
+          }),
           kills: this.player.kills,
           isAlive: this.player.isAlive,
           color: this.player.color
@@ -521,7 +576,18 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // 🎯 OPTIMIZED: Only send segments on growth or every 500ms
+  private shouldSendSegments(): boolean {
+    const now = Date.now();
+    if (!this.lastSegmentsSent || now - this.lastSegmentsSent > 500) {
+      this.lastSegmentsSent = now;
+      return true;
+    }
+    return false;
+  }
+
   private lastSyncTime: number = 0;
+  private lastSegmentsSent: number = 0;
 
   private updateCamera() {
     // Follow player with smooth camera
@@ -572,13 +638,34 @@ export class GameScene extends Phaser.Scene {
   // REMOVED: checkFoodCollisions() - Food collision is now handled on server
   // Server broadcasts food changes and player growth via GAME_STATE_UPDATE
 
-  // SENİN İSTEĞİN: Daha güzel yem renkleri
+  // SENİN İSTEĞİN: Daha güzel yem renkleri (kullanılmıyor)
+  // private getRandomFoodColor(): number {
+  //   const foodColors = [
+  //     0x00ffcc, 0xff6b6b, 0x4ecdc4, 0x45b7d1, 0x96ceb4,
+  //     0xfeca57, 0xff9ff3, 0x54a0ff, 0x5f27cd, 0x00d2d3,
+  //     0xff9f43, 0x10ac84, 0xee5a24, 0x0abde3, 0xc44569
+  //   ];
+  //   return Phaser.Utils.Array.GetRandom(foodColors);
+  // }
 
   // SERVER AUTHORITY: Collision detection server'da yapılıyor
   // Client sadece server'dan gelen death event'ini işler
 
 
-  // SENİN KURALLARIN: Ölüm efekti
+  // SENİN KURALLARIN: Ölüm efekti (kullanılmıyor)
+  // private createDeathEffect() {
+  //   this.player.segments.forEach((segment) => {
+  //     for (let i = 0; i < 3; i++) {
+  //       this.food.push({
+  //         x: segment.x + Phaser.Math.Between(-20, 20),
+  //         y: segment.y + Phaser.Math.Between(-20, 20),
+  //         color: this.player.color,
+  //         size: Phaser.Math.Between(4, 8)
+  //       });
+  //     }
+  //   });
+  //   console.log('💥 Death effect created');
+  // }
 
 
   private checkBoundaries() {
@@ -720,6 +807,9 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // private getMaxSegments(): number {
+  //   return 50;
+  // }
 
   // REMOVED: updateGameTimer() - Timer is now managed by server
   // Server broadcasts timer updates via TIMER_UPDATE events
@@ -773,24 +863,14 @@ export class GameScene extends Phaser.Scene {
 
   public killPlayer() {
     this.player.isAlive = false;
-    this.endGame();
+    this.endGame(); // Sadece kendi ekranında game over ekranı gelsin
     
-    // 🎯 YENİ: UI component'e haber ver (playerKilled event)
-    window.dispatchEvent(new CustomEvent('playerKilled', {
-      detail: {
-        message: 'You were killed! Returning to main menu...'
-      }
-    }));
-    
-    console.log('💀 Local player killed - dispatched playerKilled event');
-    
-    // ✅ ÖLEN OYUNCU İÇİN BLOCKCHAIN RESET ÇAĞIR
-    const walletAddress = localStorage.getItem('walletAddress');
-    if (walletAddress) {
+    // ✅ ÖLEN OYUNCU İÇİN BLOCKCHAIN endGame() ÇAĞIR
+    if (this.currentGameId) {
       import('../services/Web3Service').then(({ web3Service }) => {
-        web3Service.forceEndActiveGame(); // Tüm reset fonksiyonlarını dene
+        web3Service.endGame(this.player.kills || 0);
       }).catch(error => {
-        console.error('❌ Failed to reset killed player:', error);
+        console.error('❌ Failed to call endGame for killed player:', error);
       });
     }
   }
@@ -800,12 +880,39 @@ export class GameScene extends Phaser.Scene {
     // REMOVED: generateFood() - Food is now generated by server
   }
 
-  // Add cleanup method to prevent memory leaks
+  // 🎯 OPTIMIZED: Memory leak cleanup
   shutdown() {
-    console.log('🧹 GameScene being destroyed - cleaning up multiplayer');
+    console.log('🧹 GameScene cleanup - removing event listeners');
     
-    // Don't disconnect from multiplayer service here as it might be shared
-    // Just clean up local references
+    // Remove custom event listeners
+    window.removeEventListener('foodCreated', this.handleFoodCreated as unknown as EventListener);
+    
+    // Clear arrays
+    this.food = [];
+    
+    // 🎯 OPTIMIZED: Clear other players map on cleanup only
     this.otherPlayers.clear();
+    
+    // Clear graphics objects
+    if (this.playerGraphics) {
+      this.playerGraphics.destroy();
+    }
+    if (this.foodGraphics) {
+      this.foodGraphics.destroy();
+    }
+    
+    console.log('✅ GameScene cleanup complete');
   }
+
+  private handleFoodCreated = (event: CustomEvent) => {
+    const { newFood } = event.detail;
+    newFood.forEach((foodItem: any) => {
+      this.food.push({
+        x: foodItem.x,
+        y: foodItem.y,
+        color: foodItem.color,
+        size: foodItem.size
+      });
+    });
+  };
 }
