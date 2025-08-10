@@ -20,7 +20,9 @@
       "Bash(cp:*)",
       "Bash(git init:*)",
       "WebFetch(domain:github.com)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(git reset:*)"
     ],
     "deny": []
   }

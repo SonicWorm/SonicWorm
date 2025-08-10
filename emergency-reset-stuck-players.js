@@ -4,8 +4,8 @@ require('dotenv').config();
 const provider = new ethers.JsonRpcProvider('https://rpc.blaze.soniclabs.com');
 const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 const abi = require('./artifacts/contracts/GameLogicV2Simple.sol/SonicWormGameV2Simple.json').abi;
-// YENİ CONTRACT ADRESİ - Admin reset fonksiyonları ile
-const contractAddress = '0x3395D36baEB83aD83d7B868083FCb825BF0d7009';
+// SENİN CONTRACT ADRESİN
+const contractAddress = '0x8Ea91E76F41a708AC9fdB6D88e5C0d24d8beC810';
 const contract = new ethers.Contract(contractAddress, abi, wallet);
 
 async function emergencyResetStuckPlayers() {

@@ -43,16 +43,46 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
 };
 
 export class GameManager {
+  private static instance: GameManager | null = null;
   private game: Phaser.Game | null = null;
   private gameScene: GameScene | null = null;
+  private isInitializing: boolean = false;
+
+  // Singleton pattern to prevent multiple instances
+  public static getInstance(): GameManager {
+    if (!GameManager.instance) {
+      GameManager.instance = new GameManager();
+    }
+    return GameManager.instance;
+  }
+
+  private constructor() {
+    // Private constructor for singleton
+  }
 
   public startGame(containerId: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        // Prevent multiple simultaneous initializations
+        if (this.isInitializing) {
+          console.log('🎮 Game already initializing, waiting...');
+          return reject(new Error('Game is already being initialized'));
+        }
+
+        // If game is already running, just resolve
+        if (this.game && this.gameScene) {
+          console.log('🎮 Game already running, skipping initialization');
+          return resolve();
+        }
+
+        this.isInitializing = true;
+
         // Destroy existing game if any
         if (this.game) {
+          console.log('🧹 Destroying existing game instance');
           this.game.destroy(true);
           this.game = null;
+          this.gameScene = null;
         }
 
         // Update container ID
@@ -73,19 +103,23 @@ export class GameManager {
               // Setup game event listeners
               this.setupEventListeners();
               console.log('✅ SonicWorm game started successfully');
+              this.isInitializing = false;
               resolve();
             } else {
               console.error('❌ GameScene not found');
+              this.isInitializing = false;
               reject(new Error('GameScene not found'));
             }
           } catch (error) {
             console.error('❌ Failed to get GameScene:', error);
+            this.isInitializing = false;
             reject(error);
           }
         }, 1000);
 
       } catch (error) {
         console.error('❌ Failed to start game:', error);
+        this.isInitializing = false;
         reject(error);
       }
     });
@@ -100,9 +134,11 @@ export class GameManager {
 
   public destroyGame(): void {
     if (this.game) {
+      console.log('🧹 Destroying game instance');
       this.game.destroy(true);
       this.game = null;
       this.gameScene = null;
+      this.isInitializing = false;
       console.log('🎮 Game destroyed');
     }
   }
@@ -154,4 +190,4 @@ export class GameManager {
 }
 
 // Singleton instance
-export const gameManager = new GameManager();
+export const gameManager = GameManager.getInstance();

@@ -36,6 +36,8 @@ const GAME_LOGIC_ABI = [
   "function cancelReservedGame(uint256 gameId) external",
   "function recordKill(uint256 gameId, address victimAddress) external",
   "function emergencyResetMyStatus() external",
+  "function adminEmergencyResetAll() external",
+  "function batchResetPlayers(address[] calldata playerAddresses) external",
   "function getPlayer(address playerAddress) external view returns (tuple(uint256 lives, uint256 totalGamesPlayed, uint256 totalKills, uint256 totalSurvivalTime, uint256 totalRewards, uint256 lastLifeRefill, bool isActive, bool isRegistered, uint256 currentGameId))",
   "function getGame(uint256 gameId) external view returns (tuple(address player, uint256 startTime, uint256 endTime, uint256 kills, uint256 survivalTime, bool earnedReward, bool isCompleted, bool rewardClaimed, bool lifeConsumed, bool isReserved))",
   "function lifePrice() external view returns (uint256)",
@@ -1023,6 +1025,81 @@ export class Web3Service {
       }
     } catch (error: any) {
       console.error('❌ Emergency reset failed:', error.message);
+      throw error;
+    }
+  }
+
+  // 🚨 ADMIN ONLY: Reset all stuck players at once
+  public async adminEmergencyResetAll(): Promise<GameTransaction> {
+    if (!this.gameContract || !this.signer) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      console.log('🚨 ADMIN: Emergency resetting ALL stuck players...');
+      
+      const gasOptions = await this.getOptimizedGasOptions(500000); // Higher gas for batch operation
+      const tx = await this.gameContract.adminEmergencyResetAll(gasOptions);
+      
+      const transaction: GameTransaction = {
+        hash: tx.hash,
+        status: 'pending',
+        type: 'endGame',
+        timestamp: Date.now()
+      };
+
+      this.onTransactionUpdate?.(transaction);
+      const receipt = await tx.wait();
+      
+      transaction.status = receipt.status === 1 ? 'confirmed' : 'failed';
+      this.onTransactionUpdate?.(transaction);
+
+      if (receipt.status === 1) {
+        console.log('✅ ADMIN: All stuck players reset successfully');
+        this.currentGameId = null;
+        return transaction;
+      } else {
+        throw new Error('Admin reset transaction failed');
+      }
+    } catch (error: any) {
+      console.error('❌ ADMIN: Reset all failed:', error.message);
+      throw error;
+    }
+  }
+
+  // 🚨 ADMIN ONLY: Reset specific players
+  public async batchResetPlayers(playerAddresses: string[]): Promise<GameTransaction> {
+    if (!this.gameContract || !this.signer) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      console.log(`🚨 ADMIN: Batch resetting ${playerAddresses.length} players...`);
+      
+      const gasOptions = await this.getOptimizedGasOptions(200000 + (playerAddresses.length * 50000));
+      const tx = await this.gameContract.batchResetPlayers(playerAddresses, gasOptions);
+      
+      const transaction: GameTransaction = {
+        hash: tx.hash,
+        status: 'pending',
+        type: 'endGame',
+        timestamp: Date.now()
+      };
+
+      this.onTransactionUpdate?.(transaction);
+      const receipt = await tx.wait();
+      
+      transaction.status = receipt.status === 1 ? 'confirmed' : 'failed';
+      this.onTransactionUpdate?.(transaction);
+
+      if (receipt.status === 1) {
+        console.log(`✅ ADMIN: Batch reset successful for ${playerAddresses.length} players`);
+        return transaction;
+      } else {
+        throw new Error('Batch reset transaction failed');
+      }
+    } catch (error: any) {
+      console.error('❌ ADMIN: Batch reset failed:', error.message);
       throw error;
     }
   }
