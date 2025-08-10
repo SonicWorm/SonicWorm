@@ -135,7 +135,10 @@ export class MultiplayerService {
         this.ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            console.log('📨 Received message:', data);
+            // Reduce log noise to avoid frame drops on heavy traffic
+            if ((import.meta as any)?.env?.DEV && Math.random() < 0.02) {
+              console.log('📨 WS:', data.type);
+            }
             // Call handler
             this.handleMessage(data);
           } catch (error) {

@@ -17,7 +17,6 @@ export class GameScene extends Phaser.Scene {
   private playerGraphics!: Phaser.GameObjects.Graphics;
   private foodGraphics!: Phaser.GameObjects.Graphics;
   private camera!: Phaser.Cameras.Scene2D.Camera;
-  private lastInvulnLog: number = 0;
 
   // Game settings - SYNCED WITH SERVER
   private readonly WORLD_SIZE = 2500; // Synced with server (2500x2500)
@@ -288,37 +287,28 @@ export class GameScene extends Phaser.Scene {
   }
 
   // 🎯 OPTIMIZED: Interpolate other players for smooth movement
-  private interpolateOtherPlayers() {
-    // Time-based smoothing for consistent feel across FPS
-    const deltaMs = this.game.loop.delta || 16; // ~16ms at 60fps
-    const smoothingMs = 120; // approach target in ~120ms
-    const lerpFactor = 1 - Math.exp(-deltaMs / smoothingMs);
+  private interpolateOtherPlayers(dt: number) {
+    // ms provided by Phaser update(delta)
+    // Exponential smoothing mapped to actual frame time
+    const baseSmoothing = 0.15; // smoothing per ~16.67ms frame
+    const lerpFactor = 1 - Math.pow(1 - baseSmoothing, dt / 16.67);
+    const snapDistance = 100; // if far away, snap to target to avoid rubber-banding
+    const epsilon = 0.5; // ignore micro jitters
 
     this.otherPlayers.forEach(player => {
       if (player.targetX !== undefined && player.targetY !== undefined) {
-        // Smoothly approach latest server target position
-        player.x = player.x + (player.targetX - player.x) * lerpFactor;
-        player.y = player.y + (player.targetY - player.y) * lerpFactor;
+        const dx = player.targetX - player.x;
+        const dy = player.targetY - player.y;
+        const distSq = dx * dx + dy * dy;
 
-        // Keep segment train following the head for remote players
-        if (Array.isArray(player.segments) && player.segments.length > 0) {
-          // Head follows interpolated x/y
-          player.segments[0].x = player.x;
-          player.segments[0].y = player.y;
-
-          const targetDistance = this.SEGMENT_SIZE; // constant spacing for others
-          for (let i = 1; i < player.segments.length; i++) {
-            const prev = player.segments[i - 1];
-            const curr = player.segments[i];
-            const dx = prev.x - curr.x;
-            const dy = prev.y - curr.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance > targetDistance) {
-              const ratio = targetDistance / distance;
-              curr.x = prev.x - dx * ratio;
-              curr.y = prev.y - dy * ratio;
-            }
-          }
+        if (distSq >= snapDistance * snapDistance) {
+          // Too far: snap directly
+          player.x = player.targetX;
+          player.y = player.targetY;
+        } else if (Math.abs(dx) > epsilon || Math.abs(dy) > epsilon) {
+          // Smoothly approach target
+          player.x = player.x + dx * lerpFactor;
+          player.y = player.y + dy * lerpFactor;
         }
       }
     });
@@ -503,12 +493,12 @@ export class GameScene extends Phaser.Scene {
     // Bu sayede duplicate UI sorunu çözüldü
   }
 
-  update() {
+  update(_time: number, delta: number) {
     if (!this.player.isAlive) return;
 
     this.updatePlayer();
     // 🎯 OPTIMIZED: Interpolate other players for smooth movement
-    this.interpolateOtherPlayers();
+    this.interpolateOtherPlayers(delta);
     // CLIENT-SIDE ONLY: Rendering and UI
     this.updateCamera();
     this.checkBoundaries();
@@ -579,8 +569,8 @@ export class GameScene extends Phaser.Scene {
   // 🎯 OPTIMIZED: Reduced frequency and payload
   private syncPlayerToServer() {
     if (multiplayerService.isConnected() && this.player.isAlive) {
-      // 🎯 OPTIMIZED: 150ms instead of 50ms (~6-7 Hz instead of 20 Hz)
-      if (!this.lastSyncTime || Date.now() - this.lastSyncTime > 150) {
+      // 🎯 OPTIMIZED: ~80ms (~12.5 Hz) for smoother opponent motion near encounters
+      if (!this.lastSyncTime || Date.now() - this.lastSyncTime > 80) {
         multiplayerService.updatePlayer({
           x: Math.round(this.player.x),
           y: Math.round(this.player.y),
@@ -721,21 +711,14 @@ export class GameScene extends Phaser.Scene {
     this.foodGraphics.clear();
 
     // SENİN İSTEĞİN: Performans için optimize edilmiş yem render
-    const view = this.camera.worldView;
-    const cullMargin = 80; // small margin around view
-    const minX = view.x - cullMargin;
-    const minY = view.y - cullMargin;
-    const maxX = view.right + cullMargin;
-    const maxY = view.bottom + cullMargin;
     this.food.forEach(foodItem => {
-      if (foodItem.x >= minX && foodItem.x <= maxX && foodItem.y >= minY && foodItem.y <= maxY) {
-        // Basitleştirilmiş yem render (performans için)
-        this.foodGraphics.fillStyle(foodItem.color, 0.95);
-        this.foodGraphics.fillCircle(foodItem.x, foodItem.y, foodItem.size);
-        // Sadece outline (performans için)
-        this.foodGraphics.lineStyle(1, 0x000000, 0.3);
-        this.foodGraphics.strokeCircle(foodItem.x, foodItem.y, foodItem.size);
-      }
+      // Basitleştirilmiş yem render (performans için)
+      this.foodGraphics.fillStyle(foodItem.color, 0.95);
+      this.foodGraphics.fillCircle(foodItem.x, foodItem.y, foodItem.size);
+      
+      // Sadece outline (performans için)
+      this.foodGraphics.lineStyle(1, 0x000000, 0.3);
+      this.foodGraphics.strokeCircle(foodItem.x, foodItem.y, foodItem.size);
     });
 
     // Render player
@@ -861,11 +844,8 @@ export class GameScene extends Phaser.Scene {
     
     // Debug: Invulnerability durumunu göster
     if (this.player.isInvulnerable) {
-      if (!this.lastInvulnLog || currentTime - this.lastInvulnLog >= 1000) {
-        const remainingTime = Math.ceil((invulnerabilityDuration - spawnElapsed) / 1000);
-        console.log(`🛡️ Invulnerable for ${remainingTime} more seconds`);
-        this.lastInvulnLog = currentTime;
-      }
+      const remainingTime = Math.ceil((invulnerabilityDuration - spawnElapsed) / 1000);
+      console.log(`🛡️ Invulnerable for ${remainingTime} more seconds`);
     }
   }
 
