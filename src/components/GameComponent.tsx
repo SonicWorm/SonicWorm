@@ -199,12 +199,20 @@ export const GameComponent: React.FC<GameComponentProps> = ({
               onClick={async () => {
                 try {
                   console.log('🚨 ADMIN: Kurtarma işlemi başlatılıyor...');
-                  const { web3Service } = await import('../services/Web3Service');
-                  await web3Service.adminEmergencyResetAll();
+                  const mod: any = await import('../services/Web3Service');
+                  const svc: any = mod.web3Service;
+                  const adminFn = svc && svc['adminEmergencyResetAll'];
+                  if (typeof adminFn === 'function') {
+                    await adminFn.call(svc);
+                  } else if (typeof svc?.emergencyResetMyStatus === 'function') {
+                    await svc.emergencyResetMyStatus();
+                  } else {
+                    throw new Error('Emergency functions not available');
+                  }
                   alert('✅ TÜM SIKIŞAN OYUNCULAR KURTARILDI!');
                 } catch (error: any) {
                   console.error('❌ Kurtarma başarısız:', error);
-                  alert('❌ Kurtarma başarısız: ' + error.message);
+                  alert('❌ Kurtarma başarısız: ' + (error?.message || 'Unknown error'));
                 }
               }}
               className="px-4 py-2 rounded-lg font-bold text-white transition-all hover:scale-105"
