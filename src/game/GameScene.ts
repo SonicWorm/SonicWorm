@@ -210,7 +210,15 @@ export class GameScene extends Phaser.Scene {
       const isMyPlayer = ((player as any).walletAddress || '') === (myWalletAddress || '');
       
       if (!isMyPlayer) {
-        this.otherPlayers.set(player.id, player as any);
+        const withSegments = {
+          ...player,
+          segments: player.segments || this.generateSegmentsFromCount({
+            x: player.x,
+            y: player.y,
+            segmentCount: (player as any).segmentCount || 5
+          })
+        } as any;
+        this.otherPlayers.set(player.id, withSegments);
       } else {
         // My player - sync server data
         const oldKills = this.player.kills;
