@@ -159,6 +159,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     multiplayerService.setOnGameState((gameState) => {
+      // Guard: wait until my server id is set to avoid misclassification
+      if (!this.player?.id || this.player.id.length === 0) return;
       this.updateGameStateFromServer(gameState);
     });
 
@@ -207,7 +209,7 @@ export class GameScene extends Phaser.Scene {
     const serverPlayerIds = new Set();
     
     gameState.players.forEach(player => {
-      const isMyPlayer = (player as any).walletAddress === myWalletAddress;
+      const isMyPlayer = player.id === this.player.id;
       
       if (!isMyPlayer) {
         serverPlayerIds.add(player.id); // Track server player IDs
@@ -215,26 +217,32 @@ export class GameScene extends Phaser.Scene {
         // 🎯 OPTIMIZED: Update or add players without clearing
         const existingPlayer = this.otherPlayers.get(player.id);
         if (existingPlayer) {
-          // Update existing player with interpolation targets
+          // Immediate sync and interpolation targets
+          existingPlayer.x = player.x;
+          existingPlayer.y = player.y;
           (existingPlayer as any).targetX = player.x;
           (existingPlayer as any).targetY = player.y;
           existingPlayer.angle = player.angle;
           existingPlayer.kills = player.kills;
           existingPlayer.isAlive = player.isAlive;
-          // Generate segments from segmentCount if not provided
           if (player.segmentCount && !player.segments) {
             existingPlayer.segmentCount = player.segmentCount;
-            this.generateSegmentsFromCount(existingPlayer);
+            existingPlayer.segments = this.generateSegmentsFromCount({ x: player.x, y: player.y, segmentCount: player.segmentCount });
           } else if (player.segments) {
             existingPlayer.segments = player.segments;
           }
-      } else {
+          if (existingPlayer.segments && existingPlayer.segments.length > 0) {
+            existingPlayer.segments[0].x = existingPlayer.x;
+            existingPlayer.segments[0].y = existingPlayer.y;
+          }
+        } else {
           // New player - add to map
           const newPlayer = {
             ...player,
+            x: player.x,
+            y: player.y,
             targetX: player.x,
             targetY: player.y,
-            // Generate segments if only count provided
             segments: player.segments || this.generateSegmentsFromCount({ x: player.x, y: player.y, segmentCount: player.segmentCount || 5 })
           };
           this.otherPlayers.set(player.id, newPlayer);
@@ -706,26 +714,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private render() {
-    // Clear graphics
+    // Clear player graphics only; keep food until it changes (perf)
     this.playerGraphics.clear();
-    this.foodGraphics.clear();
-
-    // SENİN İSTEĞİN: Performans için optimize edilmiş yem render
-    this.food.forEach(foodItem => {
-      // Basitleştirilmiş yem render (performans için)
-      this.foodGraphics.fillStyle(foodItem.color, 0.95);
-      this.foodGraphics.fillCircle(foodItem.x, foodItem.y, foodItem.size);
-      
-      // Sadece outline (performans için)
-      this.foodGraphics.lineStyle(1, 0x000000, 0.3);
-      this.foodGraphics.strokeCircle(foodItem.x, foodItem.y, foodItem.size);
-    });
 
     // Render player
     this.renderPlayer(this.player);
 
-    // Render other players (for multiplayer later)
+    // Render other players
     this.otherPlayers.forEach(player => {
+      if (player.segments && player.segments.length > 0) {
+        player.segments[0].x = player.x;
+        player.segments[0].y = player.y;
+      }
       this.renderPlayer(player);
     });
   }
