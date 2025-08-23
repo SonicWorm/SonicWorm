@@ -159,8 +159,6 @@ export class GameScene extends Phaser.Scene {
     });
 
     multiplayerService.setOnGameState((gameState) => {
-      // Guard: wait until my server id is set to avoid misclassification
-      if (!this.player?.id || this.player.id.length === 0) return;
       this.updateGameStateFromServer(gameState);
     });
 
@@ -204,49 +202,15 @@ export class GameScene extends Phaser.Scene {
       console.log('🕐 Game start time set from server:', this.serverGameStartTime);
     }
     
-    // 🎯 OPTIMIZED: DIFF-based player updates instead of clear() + rebuild
+    // 🎯 REFERENCE-BEHAVIOR: Clear and rebuild from snapshot using wallet matching
     const myWalletAddress = localStorage.getItem('walletAddress');
-    const serverPlayerIds = new Set();
+    this.otherPlayers.clear();
     
     gameState.players.forEach(player => {
-      const isMyPlayer = player.id === this.player.id;
+      const isMyPlayer = ((player as any).walletAddress || '') === (myWalletAddress || '');
       
       if (!isMyPlayer) {
-        serverPlayerIds.add(player.id); // Track server player IDs
-        
-        // 🎯 OPTIMIZED: Update or add players without clearing
-        const existingPlayer = this.otherPlayers.get(player.id);
-        if (existingPlayer) {
-          // Immediate sync and interpolation targets
-          existingPlayer.x = player.x;
-          existingPlayer.y = player.y;
-          (existingPlayer as any).targetX = player.x;
-          (existingPlayer as any).targetY = player.y;
-          existingPlayer.angle = player.angle;
-          existingPlayer.kills = player.kills;
-          existingPlayer.isAlive = player.isAlive;
-          if (player.segmentCount && !player.segments) {
-            existingPlayer.segmentCount = player.segmentCount;
-            existingPlayer.segments = this.generateSegmentsFromCount({ x: player.x, y: player.y, segmentCount: player.segmentCount });
-          } else if (player.segments) {
-            existingPlayer.segments = player.segments;
-          }
-          if (existingPlayer.segments && existingPlayer.segments.length > 0) {
-            existingPlayer.segments[0].x = existingPlayer.x;
-            existingPlayer.segments[0].y = existingPlayer.y;
-          }
-        } else {
-          // New player - add to map
-          const newPlayer = {
-            ...player,
-            x: player.x,
-            y: player.y,
-            targetX: player.x,
-            targetY: player.y,
-            segments: player.segments || this.generateSegmentsFromCount({ x: player.x, y: player.y, segmentCount: player.segmentCount || 5 })
-          };
-          this.otherPlayers.set(player.id, newPlayer);
-        }
+        this.otherPlayers.set(player.id, player as any);
       } else {
         // My player - sync server data
         const oldKills = this.player.kills;
@@ -263,18 +227,8 @@ export class GameScene extends Phaser.Scene {
             detail: { kills: player.kills }
           }));
         }
-        
-        console.log(`🆔 Player synced: ID=${player.id}, Wallet=${myWalletAddress}, Kills=${player.kills}`);
       }
     });
-
-    // 🎯 OPTIMIZED: Remove players that are no longer on server (diff cleanup)
-    for (const [playerId] of this.otherPlayers) {
-      if (!serverPlayerIds.has(playerId)) {
-        this.otherPlayers.delete(playerId);
-        console.log(`👋 Removed disconnected player: ${playerId}`);
-      }
-    }
 
     // Yem durumunu güncelle
     this.food = gameState.food?.map(f => ({ x: f.x, y: f.y, color: f.color, size: f.size })) || this.food;
